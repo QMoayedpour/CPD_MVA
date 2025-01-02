@@ -167,10 +167,15 @@ class CPOP(object):
 
         T_t_star = [ast.literal_eval(tau) for tau in intervals if intervals[tau] is not None]
 
+        T_t_prune = self.ineq_prun(self.coefs)
+
         taus_t_ = T_t_star.copy()
 
         for tau in T_t_star:
-            taus_t_.append(tau + [t])
+            if tau not in T_t_prune: # Ici T_t_prune renvoie les partitions qui ne vérifient pas
+                                     # L'autre cond de pruning
+                                     # Peut etre #TODO modifier comment on fait l'intersection des 2 sets
+                taus_t_.append(tau + [t])
 
         return taus_t_
 
@@ -185,9 +190,22 @@ class CPOP(object):
 
         return output_dict
 
+    def ineq_prun(self, coefs):
+
+        bound_dict = self.get_val(coefs)
+
+        bounds_values = np.array(list(bound_dict.values()))
+        min_bound = bounds_values.min()
+
+        taus_out = []
+        for key, bound in bound_dict.items():
+            if bound > min_bound + self.K:
+                taus_out.append(ast.literal_eval(key))
+        return taus_out
+
     def run(self):
 
-        K = 2 * self.beta + self.h(1) + self.h(self.n)
+        self.K = 2 * self.beta + self.h(1) + self.h(self.n)
 
         for t in range(1, self.n+1):
             self.coefs_t[t] = {}
