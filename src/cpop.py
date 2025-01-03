@@ -1,6 +1,7 @@
 import numpy as np
 import ast
 from .cost import LogCost
+import matplotlib.pyplot as plt
 
 
 class CPOP(object):
@@ -31,8 +32,8 @@ class CPOP(object):
 
         return A, B, float(C), float(D), float(E), F
 
-    def get_coefs_at_null(self, t):
-        A, B, C, D, E, F = self.get_coefs(0, t)
+    def get_coefs_at_null(self, t, tauk=0):
+        A, B, C, D, E, F = self.get_coefs(tauk, t)
 
         if F == 0:  # pas de division par 0
             return np.array([self.y[0] ** 2]*3),  -2 * self.y[0], 1
@@ -224,4 +225,59 @@ class CPOP(object):
             self.coefs = {tau: self.coefs[f"{tau}"] for tau in self.coefs if ast.literal_eval(tau) in self.taus_t}
 
         res = self.get_val(self.coefs)
-        return ast.literal_eval(min(res, key=res.get))
+        ckpts = ast.literal_eval(min(res, key=res.get))
+        self.ckpts = [x-1 if x!=0 else 0 for x in ckpts]
+        self.ckpts += [len(self.y)-1]
+        return self.ckpts
+
+    def get_phis(self, ckpts):
+        coef, alpha, gamma = self.get_coefs_at_null(ckpts[1]+1)
+
+        list_alphas = [alpha]
+        list_gammas = [gamma]
+        list_phi = []
+
+        for i, ckpt in enumerate(ckpts[2:]):
+
+            coef, alpha, gamma = self.get_min_C(ckpts[i+1]+1, ckpt + 1, coef) 
+            
+            list_alphas.append(alpha)
+            list_gammas.append(gamma)
+        
+        phi = -coef[1] / (2 * coef[2])
+        list_phi.append(phi)
+        for alpha, gamma in zip(list_alphas[::-1], list_gammas[::-1]):
+            list_phi.append(alpha + gamma * list_phi[-1])
+
+        return list_phi[::-1]
+
+    def approx_f(self, ckpts, phis):
+        phi1 = np.array([phis[0]])
+        approx = [phi1]
+        for i in range(1, len(ckpts)):
+            slope = (phis[i] - phis[i - 1]) / (ckpts[i] - ckpts[i - 1])
+            x = np.arange(ckpts[i - 1] + 1, ckpts[i] + 1)
+            y = slope * (x - ckpts[i - 1]) + phis[i - 1]
+            approx.append(y)
+
+        return np.concatenate(approx)
+
+    def compute_approx_and_plot(self, ckpts=None, logs=False):
+        if ckpts is None:
+            ckpts = self.ckpts
+        if ckpts[0] != 0:
+            ckpts.insert(0, 0)
+        if ckpts[-1] != len(self.y)-1:
+            ckpts.insert(-1, len(self.y)-1)
+
+        self.phis = self.get_phis(ckpts)
+
+        self.approx = self.approx_f(ckpts, self.phis)
+
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.y, c="blue")
+        plt.plot(self.approx, c="r", label="Approximation")
+        plt.scatter(ckpts[1:-1], self.approx[ckpts[1:-1]], c="r")
+        plt.show()
+        if logs:
+            return self.approx
