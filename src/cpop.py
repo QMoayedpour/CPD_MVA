@@ -1,16 +1,27 @@
 import numpy as np
 import ast
+from tqdm import tqdm
+from scipy.stats import median_abs_deviation
 from .cost import LogCost
 import matplotlib.pyplot as plt
 
 
 class CPOP(object):
-    def __init__(self, y, sigma, beta, h=LogCost(1)):
+    def __init__(self, y, sigma=None, beta=1, h=LogCost(1)):
         self.y = y
-        self.sigma = sigma
+        if sigma is None:
+            self.sigma = median_abs_deviation(np.diff(y))
+        else:
+            self.sigma = sigma
+
         self.beta = beta
         self.h = h
         self.n = len(y)
+        self.taus_t = [[0]]
+        self.coefs = {}
+        self.coefs_t = {}
+
+    def _reset_coefs(self):
         self.taus_t = [[0]]
         self.coefs = {}
         self.coefs_t = {}
@@ -262,7 +273,7 @@ class CPOP(object):
 
         return np.concatenate(approx)
 
-    def compute_approx_and_plot(self, ckpts=None, logs=False):
+    def compute_approx_and_plot(self, ckpts=None, logs=False, verbose=True):
         if ckpts is None:
             ckpts = self.ckpts
         if ckpts[0] != 0:
@@ -273,11 +284,46 @@ class CPOP(object):
         self.phis = self.get_phis(ckpts)
 
         self.approx = self.approx_f(ckpts, self.phis)
-
-        plt.figure(figsize=(12, 6))
-        plt.plot(self.y, c="blue")
-        plt.plot(self.approx, c="r", label="Approximation")
-        plt.scatter(ckpts[1:-1], self.approx[ckpts[1:-1]], c="r")
-        plt.show()
+        if verbose:
+            plt.figure(figsize=(12, 6))
+            plt.plot(self.y, c="blue")
+            plt.plot(self.approx, c="r", label="Approximation")
+            plt.scatter(ckpts[1:-1], self.approx[ckpts[1:-1]], c="r")
+            plt.show()
         if logs:
             return self.approx
+    
+    def _loglikelihood(self):
+        n = len(self.y)
+        log_likelihood = 0
+
+        for t in range(self.n):
+
+            log_likelihood += -0.5 * (np.log(2 * np.pi * self.sigma**2) + ((self.y[t] - self.approx[t]) ** 2) / self.sigma**2)
+
+        return log_likelihood
+    
+    def BIC(self):
+        return -2*self._loglikelihood() + len(self.phis) * np.log(self.n)
+    
+    def compute_max_bic(self, beta_range=np.linspace(0.5, 20, 39), verbose=True):
+
+        bic_values = []
+        for i in tqdm(beta_range):
+
+            self.beta = i
+
+            self._reset_coefs()
+            _ = self.run()
+            self.compute_approx_and_plot(verbose=False)
+
+            bic_values.append(self.BIC())
+        
+        idx_min = bic_values.index(min(bic_values))
+        self.beta = beta_range[idx_min]
+        self._reset_coefs()
+        self.run()
+        print("Beta for min BIC:", self.beta)
+        print("BIC:", bic_values[idx_min])
+        if verbose:
+            self.compute_approx_and_plot(verbose=True)
