@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import ast
 from tqdm import tqdm
 from scipy.stats import median_abs_deviation
@@ -11,6 +12,8 @@ class CPOP(object):
         self.y = y
         if sigma is None:
             self.sigma = median_abs_deviation(np.diff(y))
+            # Si sigma n'est pas encore calculé, on prends la MAD
+            # de l'incrément de la série
         else:
             self.sigma = sigma
 
@@ -78,24 +81,10 @@ class CPOP(object):
         alpha = -(E + past_coefs[1]) / (2*(F + past_coefs[2]))
         gamma = -B / (2*(F + past_coefs[2]))
 
-        a = (
-            past_coefs[0]
-            + past_coefs[1] * alpha
-            + past_coefs[2] * alpha**2
-            + D
-            + E * alpha
-            + F * alpha**2
-            + self.h(s)
-            + self.beta
-        )
-        b = (
-            past_coefs[1] * gamma
-            + 2 * past_coefs[2] * alpha * gamma
-            + B * alpha
-            + C
-            + E * gamma
-            + 2 * F * alpha * gamma
-        )
+        a = (past_coefs[0] + past_coefs[1] * alpha + past_coefs[2] * alpha**2 + D
+             + E * alpha + F * alpha**2 + self.h(s) + self.beta)
+        b = (past_coefs[1] * gamma + 2 * past_coefs[2] * alpha * gamma
+             + B * alpha + C + E * gamma + 2 * F * alpha * gamma)
         c = past_coefs[2] * gamma**2 + A + B * gamma + F * gamma**2
 
         return np.array([a, b, c]), alpha, gamma
@@ -111,8 +100,8 @@ class CPOP(object):
                 x.append(np.inf)
                 return (x[0], remove)
             else:
-                root1 = (-coefs[1] + np.sqrt(delta)) / 2 / coefs[2]
-                root2 = (-coefs[1] - np.sqrt(delta)) / 2 / coefs[2]
+                root1 = (-coefs[1] + np.sqrt(delta)) / (2 * coefs[2])
+                root2 = (-coefs[1] - np.sqrt(delta)) / (2 * coefs[2])
         else:
             if coefs[1] != 0:
                 root1 = -coefs[0] / coefs[1]
@@ -195,7 +184,7 @@ class CPOP(object):
         output_dict = {}
 
         for key, coefs in coefs_dict.items():
-            if coefs[2] == 0:
+            if coefs[2] == 0: # Pas de div par 0
                 output_dict[key] = coefs[0]
             else:
                 output_dict[key] = float(coefs[0] - coefs[1] ** 2 / 4 / coefs[2])
@@ -251,10 +240,10 @@ class CPOP(object):
         for i, ckpt in enumerate(ckpts[2:]):
 
             coef, alpha, gamma = self.get_min_C(ckpts[i+1]+1, ckpt + 1, coef) 
-            
+
             list_alphas.append(alpha)
             list_gammas.append(gamma)
-        
+
         phi = -coef[1] / (2 * coef[2])
         list_phi.append(phi)
         for alpha, gamma in zip(list_alphas[::-1], list_gammas[::-1]):
@@ -274,6 +263,8 @@ class CPOP(object):
         return np.concatenate(approx)
 
     def compute_approx_and_plot(self, ckpts=None, logs=False, verbose=True):
+        """Compute the phis, the approximation of y (given phis) and plot it (optionnal)
+        """
         if ckpts is None:
             ckpts = self.ckpts
         if ckpts[0] != 0:
@@ -292,9 +283,9 @@ class CPOP(object):
             plt.show()
         if logs:
             return self.approx
-    
+
     def _loglikelihood(self):
-        n = len(self.y)
+
         log_likelihood = 0
 
         for t in range(self.n):
@@ -302,13 +293,37 @@ class CPOP(object):
             log_likelihood += -0.5 * (np.log(2 * np.pi * self.sigma**2) + ((self.y[t] - self.approx[t]) ** 2) / self.sigma**2)
 
         return log_likelihood
-    
+
     def BIC(self):
         return -2*self._loglikelihood() + len(self.phis) * np.log(self.n)
-    
-    def compute_max_bic(self, beta_range=np.linspace(0.5, 20, 39), verbose=True):
 
-        bic_values = []
+    def mBIC(self):
+        scnd_term = sum(math.log((self.ckpts[i] - self.ckpts[i-1]) / self.n) for i in range(1, len(self.ckpts)))
+        return -2*self._loglikelihood() + 3 * len(self.phis) * np.log(self.n) + scnd_term
+
+    def AIC(self):
+        return -2*self._loglikelihood() + 2*len(self.phis)
+
+    def criterion(self, criterion="BIC"):
+        if criterion == "BIC":
+            return self.BIC()
+        elif criterion == "mBIC":
+            return self.mBIC()
+        elif criterion == "AIC":
+            return self.AIC()
+        else:
+            return None
+
+    def compute_max_criterion(self, beta_range=np.linspace(0.5, 20, 39), criterion="BIC",
+                              verbose=True, log_n=False):
+        """
+        For beta in beta_range, we estimate the model and select the one that minimise the criterion
+        log_n is optional and multiply the values of beta by log_n. In the original article
+        they show that we have asymptotic results for beta = gamma * log(n)
+        """
+        criterion_value = []
+        if log_n:
+            beta_range *= np.log(self.n)
         for i in tqdm(beta_range):
 
             self.beta = i
@@ -317,13 +332,13 @@ class CPOP(object):
             _ = self.run()
             self.compute_approx_and_plot(verbose=False)
 
-            bic_values.append(self.BIC())
-        
-        idx_min = bic_values.index(min(bic_values))
+            criterion_value.append(self.criterion(criterion))
+
+        idx_min = criterion_value.index(min(criterion_value))
         self.beta = beta_range[idx_min]
         self._reset_coefs()
         self.run()
-        print("Beta for min BIC:", self.beta)
-        print("BIC:", bic_values[idx_min])
+        print(f"Beta for min {criterion}:", self.beta)
+        print(f"{criterion}:", criterion_value[idx_min])
         if verbose:
             self.compute_approx_and_plot(verbose=True)
