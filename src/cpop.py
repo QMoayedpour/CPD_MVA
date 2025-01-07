@@ -271,7 +271,7 @@ class CPOP(object):
         return np.concatenate(approx)
 
     def compute_approx_and_plot(self, ckpts=None, logs=False, verbose=True,
-                                stride=5):
+                                stride=5, title="", test=False, noticks=False):
         """Compute the phis, the approximation of y (given phis) and plot it (optionnal)
         """
         if ckpts is None:
@@ -292,13 +292,20 @@ class CPOP(object):
             plt.figure(figsize=(12, 6))
             plt.plot(idxs, self.y, c="blue")
             plt.plot(idxs, self.approx, c="r", label="Approximation")
+            plt.title(title)
             plt.scatter(idxs[ckpts[1:-1]], self.approx[ckpts[1:-1]], c="r")
 
             ax = plt.gca()
             tick_positions = range(0, len(idxs), stride)
             ax.set_xticks(tick_positions)
             ax.set_xticklabels([idxs[i] for i in tick_positions], rotation=45)
-            plt.show()
+
+            if noticks:
+                ax.set_xticks([])
+                ax.set_yticks([])
+            plt.legend()
+            if test:
+                plt.show()
 
         if logs:
             return self.approx
@@ -334,13 +341,15 @@ class CPOP(object):
             return None
 
     def compute_max_criterion(self, beta_range=np.linspace(0.5, 20, 39), criterion="BIC",
-                              verbose=True, log_n=False, upd_sigma=False, reset_sigma=True):
+                              verbose=True, log_n=False, upd_sigma=False, reset_sigma=True,
+                              noticks=False):
         """
         For beta in beta_range, we estimate the model and select the one that minimise the criterion
         log_n is optional and multiply the values of beta by log_n. In the original article
         they show that we have asymptotic results for beta = gamma * log(n)
         """
         criterion_value = []
+        self.list_logs = []
         if log_n:
             beta_range *= np.log(self.n)
         for i in tqdm(beta_range):
@@ -353,9 +362,11 @@ class CPOP(object):
             self.compute_approx_and_plot(verbose=False)
 
             if upd_sigma:
-                self.update_sigma()
+                self.update_sigma()    
 
             criterion_value.append(self.criterion(criterion))
+            self.list_logs.append((float(self.sigma), float(self.beta),
+                                    float(self.criterion(criterion))))
 
             if reset_sigma:
                 self.reset_sigma()
@@ -367,4 +378,4 @@ class CPOP(object):
         print(f"Beta for min {criterion}:", self.beta)
         print(f"{criterion}:", self.criterion(criterion))
         if verbose:
-            self.compute_approx_and_plot(verbose=True)
+            self.compute_approx_and_plot(verbose=True, noticks=noticks)
