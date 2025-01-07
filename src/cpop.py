@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 
 class CPOP(object):
-    def __init__(self, y, sigma=None, beta=1, h=LogCost(1)):
+    def __init__(self, y, sigma=None, beta=1, h=LogCost(1), idxs=None):
         self.y = y
         if sigma is None:
             self.sigma = median_abs_deviation(np.diff(y))
@@ -23,6 +23,14 @@ class CPOP(object):
         self.taus_t = [[0]]
         self.coefs = {}
         self.coefs_t = {}
+        self.recompute_sigma = False
+        self.idxs = idxs
+    
+    def update_sigma(self):
+        self.sigma = np.std(self.y - self.approx)
+
+    def reset_sigma(self):
+        self.sigma = median_abs_deviation(np.diff(self.y))
 
     def _reset_coefs(self):
         self.taus_t = [[0]]
@@ -54,7 +62,7 @@ class CPOP(object):
         else:
             alpha = -E / 2 / F
             gamma = -B / 2 / F
-            a = D + alpha * E + F * alpha**2 + self.h(t)
+            a = D + alpha * E + F * alpha**2 + self.h(t-tauk)
             b = alpha * B + C + E * gamma + 2 * F * alpha * gamma
             c = A + B * gamma + F * gamma**2
 
@@ -100,24 +108,24 @@ class CPOP(object):
                 x.append(np.inf)
                 return (x[0], remove)
             else:
-                root1 = (-coefs[1] + np.sqrt(delta)) / (2 * coefs[2])
-                root2 = (-coefs[1] - np.sqrt(delta)) / (2 * coefs[2])
+                rootp = (-coefs[1] + np.sqrt(delta)) / (2 * coefs[2])
+                rootm = (-coefs[1] - np.sqrt(delta)) / (2 * coefs[2])
         else:
             if coefs[1] != 0:
-                root1 = -coefs[0] / coefs[1]
-                root2 = -coefs[0] / coefs[1]
+                rootp = -coefs[0] / coefs[1]
+                rootm = -coefs[0] / coefs[1]
             else:
                 if coefs[0] >= 0:
                     remove.append(idx)
                     x.append(np.inf)
                     return (x[0], remove)
 
-        if root1 > phi_curr + eps and root2 > phi_curr + eps:
-            x.append(min(root1, root2))
-        elif root1 > phi_curr + eps:
-            x.append(root1)
-        elif root2 > phi_curr + eps:
-            x.append(root2)
+        if rootp > phi_curr + eps and rootm > phi_curr + eps:
+            x.append(min(rootp, rootm))
+        elif rootp > phi_curr + eps:
+            x.append(rootp)
+        elif rootm > phi_curr + eps:
+            x.append(rootm)
         else:
             remove.append(idx)
             x.append(np.inf)
@@ -216,7 +224,6 @@ class CPOP(object):
                     self.coefs_t[t][f"{tau}"] = self.coefs[f"{tau}"]
                     continue
 
-                A, B, C, D, E, F = self.get_coefs(tau[-1], t)
                 self.coefs[f"{tau}"], _, __ = self.get_min_C(tau[-1], t,
                                                              self.coefs_t[tau[-1]][f"{tau[:-1]}"])
                 self.coefs_t[t][f"{tau}"] = self.coefs[f"{tau}"]
@@ -252,6 +259,7 @@ class CPOP(object):
         return list_phi[::-1]
 
     def approx_f(self, ckpts, phis):
+        phis[0] += 1
         phi1 = np.array([phis[0]])
         approx = [phi1]
         for i in range(1, len(ckpts)):
@@ -262,7 +270,8 @@ class CPOP(object):
 
         return np.concatenate(approx)
 
-    def compute_approx_and_plot(self, ckpts=None, logs=False, verbose=True):
+    def compute_approx_and_plot(self, ckpts=None, logs=False, verbose=True,
+                                stride=5):
         """Compute the phis, the approximation of y (given phis) and plot it (optionnal)
         """
         if ckpts is None:
@@ -276,11 +285,21 @@ class CPOP(object):
 
         self.approx = self.approx_f(ckpts, self.phis)
         if verbose:
+            if self.idxs is None:
+                idxs = np.arange(0, len(self.y))
+            else:
+                idxs = self.idxs
             plt.figure(figsize=(12, 6))
-            plt.plot(self.y, c="blue")
-            plt.plot(self.approx, c="r", label="Approximation")
-            plt.scatter(ckpts[1:-1], self.approx[ckpts[1:-1]], c="r")
+            plt.plot(idxs, self.y, c="blue")
+            plt.plot(idxs, self.approx, c="r", label="Approximation")
+            plt.scatter(idxs[ckpts[1:-1]], self.approx[ckpts[1:-1]], c="r")
+
+            ax = plt.gca()
+            tick_positions = range(0, len(idxs), stride)
+            ax.set_xticks(tick_positions)
+            ax.set_xticklabels([idxs[i] for i in tick_positions], rotation=45)
             plt.show()
+
         if logs:
             return self.approx
 
@@ -315,7 +334,7 @@ class CPOP(object):
             return None
 
     def compute_max_criterion(self, beta_range=np.linspace(0.5, 20, 39), criterion="BIC",
-                              verbose=True, log_n=False):
+                              verbose=True, log_n=False, upd_sigma=False, reset_sigma=True):
         """
         For beta in beta_range, we estimate the model and select the one that minimise the criterion
         log_n is optional and multiply the values of beta by log_n. In the original article
@@ -330,15 +349,22 @@ class CPOP(object):
 
             self._reset_coefs()
             _ = self.run()
+
             self.compute_approx_and_plot(verbose=False)
 
+            if upd_sigma:
+                self.update_sigma()
+
             criterion_value.append(self.criterion(criterion))
+
+            if reset_sigma:
+                self.reset_sigma()
 
         idx_min = criterion_value.index(min(criterion_value))
         self.beta = beta_range[idx_min]
         self._reset_coefs()
         self.run()
         print(f"Beta for min {criterion}:", self.beta)
-        print(f"{criterion}:", criterion_value[idx_min])
+        print(f"{criterion}:", self.criterion(criterion))
         if verbose:
             self.compute_approx_and_plot(verbose=True)
