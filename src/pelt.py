@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from src.cost import cost_L2
+from sklearn.linear_model import LinearRegression
 
 
 class PELT(object):
@@ -115,7 +116,7 @@ class PELT(object):
         plt.plot(np.arange(len(self.x)), self.x)
 
         plt.scatter(CP[1:-1], segments[CP[1:-1]], label=f"{num_changepoints} Change Points", c="r")
-        if how=="linear":
+        if how == "linear":
             plt.plot(np.arange(len(self.x)), segments, c="red")
         else:
             plt.step(np.arange(len(self.x)), segments, where="post", c="red")
