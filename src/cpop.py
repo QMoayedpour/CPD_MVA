@@ -58,15 +58,15 @@ class CPOP(object):
         A, B, C, D, E, F = self.get_coefs(tauk, t)
 
         if F == 0:  # pas de division par 0
-            return np.array([self.y[0] ** 2]*3),  -2 * self.y[0], 1
-        else:
-            alpha = -E / 2 / F
-            gamma = -B / 2 / F
-            a = D + alpha * E + F * alpha**2 + self.h(t-tauk)
-            b = alpha * B + C + E * gamma + 2 * F * alpha * gamma
-            c = A + B * gamma + F * gamma**2
+            return np.array([self.y[0] ** 2]*3),  -2 * self.y[0], 1        
 
-            return np.array([a, b, c]), alpha, gamma
+        rec_1 = -E /(2*F)
+        rec_2 = -B /(2*F)
+        a = D + self.h(t-tauk) + self.beta - (E**2)/(4*F)
+        b = C - 2*(E*B)/(4*F)
+        c = A - (B**2)/(4*F)
+
+        return np.array([a, b, c]), rec_1, rec_2
 
     def get_min_inf(self, coefs):
         min_col2 = min(array[2] for array in coefs.values())
@@ -86,16 +86,14 @@ class CPOP(object):
         s = t - tauk
         A, B, C, D, E, F = self.get_coefs(tauk, t)
 
-        alpha = -(E + past_coefs[1]) / (2*(F + past_coefs[2]))
-        gamma = -B / (2*(F + past_coefs[2]))
+        rec_1 = -(E + past_coefs[1]) / (2*(F + past_coefs[2]))
+        rec_2 = -B / (2*(F + past_coefs[2]))
 
-        a = (past_coefs[0] + past_coefs[1] * alpha + past_coefs[2] * alpha**2 + D
-             + E * alpha + F * alpha**2 + self.h(s) + self.beta)
-        b = (past_coefs[1] * gamma + 2 * past_coefs[2] * alpha * gamma
-             + B * alpha + C + E * gamma + 2 * F * alpha * gamma)
-        c = past_coefs[2] * gamma**2 + A + B * gamma + F * gamma**2
+        a = past_coefs[0] + D + self.beta + self.h(s) - ((past_coefs[1]+E)**2)/(4*(past_coefs[2] + F))  
+        b = C - B*(past_coefs[1]+E) / (2 * (past_coefs[2] + F))
+        c = A - (B**2)/(4*(past_coefs[2]+F))
 
-        return np.array([a, b, c]), alpha, gamma
+        return np.array([a, b, c]), rec_1, rec_2
 
     def get_mean_diff(self, phi_curr, coefs_1, coefs_2, idx, remove=[], eps=1e-5):
         x = []
@@ -147,7 +145,8 @@ class CPOP(object):
                 if tau == key_curr:
                     x[tau] = np.inf
                     continue
-                x[tau], remove = self.get_mean_diff(phi_curr, coefs[tau], coefs[key_curr], tau, remove)
+                x[tau], remove = self.get_mean_diff(phi_curr, coefs[tau],
+                                                    coefs[key_curr], tau, remove)
 
             if not x:
                 break
@@ -238,23 +237,23 @@ class CPOP(object):
         return self.ckpts
 
     def get_phis(self, ckpts):
-        coef, alpha, gamma = self.get_coefs_at_null(ckpts[1]+1)
+        coef, rec_1, rec_2 = self.get_coefs_at_null(ckpts[1]+1)
 
-        list_alphas = [alpha]
-        list_gammas = [gamma]
+        list_rec_1s = [rec_1]
+        list_rec_2s = [rec_2]
         list_phi = []
 
         for i, ckpt in enumerate(ckpts[2:]):
 
-            coef, alpha, gamma = self.get_min_C(ckpts[i+1]+1, ckpt + 1, coef) 
+            coef, rec_1, rec_2 = self.get_min_C(ckpts[i+1]+1, ckpt + 1, coef) 
 
-            list_alphas.append(alpha)
-            list_gammas.append(gamma)
+            list_rec_1s.append(rec_1)
+            list_rec_2s.append(rec_2)
 
         phi = -coef[1] / (2 * coef[2])
         list_phi.append(phi)
-        for alpha, gamma in zip(list_alphas[::-1], list_gammas[::-1]):
-            list_phi.append(alpha + gamma * list_phi[-1])
+        for rec_1, rec_2 in zip(list_rec_1s[::-1], list_rec_2s[::-1]):
+            list_phi.append(rec_1 + rec_2 * list_phi[-1])
 
         return list_phi[::-1]
 
@@ -346,7 +345,7 @@ class CPOP(object):
         """
         For beta in beta_range, we estimate the model and select the one that minimise the criterion
         log_n is optional and multiply the values of beta by log_n. In the original article
-        they show that we have asymptotic results for beta = gamma * log(n)
+        they show that we have asymptotic results for beta = rec_2 * log(n)
         """
         criterion_value = []
         self.list_logs = []
