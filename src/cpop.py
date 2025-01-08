@@ -3,7 +3,7 @@ import math
 import ast
 from tqdm import tqdm
 from scipy.stats import median_abs_deviation
-from .cost import LogCost
+from src.cost import LogCost
 import matplotlib.pyplot as plt
 
 
@@ -373,8 +373,8 @@ class CPOP(object):
         idx_min = criterion_value.index(min(criterion_value))
         self.beta = beta_range[idx_min]
         self._reset_coefs()
+        self.sigma = self.list_logs[idx_min][0]
         self.run()
         print(f"Beta for min {criterion}:", self.beta)
         print(f"{criterion}:", self.criterion(criterion))
-        if verbose:
-            self.compute_approx_and_plot(verbose=True, noticks=noticks)
+        self.compute_approx_and_plot(verbose=verbose, noticks=noticks)
