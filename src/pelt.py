@@ -1,10 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from .cost import cost_L2
+from src.cost import cost_L2
 
 
 class PELT(object):
-    def __init__(self, x, cost_function, max_changepoints):
+    def __init__(self, x, cost_function=cost_L2, max_changepoints=5):
         """
         Paper: https://arxiv.org/pdf/1101.1438
         """
@@ -85,15 +85,40 @@ class PELT(object):
         """
         self.dp_all_cp()
 
-    def show_changepoints(self, num_changepoints):
+    def show_changepoints(self, num_changepoints, how=""):
         """
-        Visualize the detected change points.
+        Visualize the detected change points with segment means.
         """
+
         CP = self.dp_cpd(num_changepoints)
 
+        CP = np.sort(np.concatenate(([0], CP, [len(self.x)])))
+
+        if how == "linear":
+            segment_means = []
+            for i in range(len(CP) - 1):
+                start, end = CP[i], CP[i + 1]
+                t = np.arange(len(self.x[start:end])).reshape(-1, 1)
+                model = LinearRegression()
+                model.fit(t, self.x[start:end])
+
+                segment_means.append(model.predict(t))
+           
+        else:
+            segment_means = []
+            for i in range(len(CP) - 1):
+                start, end = CP[i], CP[i + 1]
+                segment_means.append(np.tile(np.mean(self.x[start:end]), end-start))
+        segments = np.concatenate(segment_means)
+
         plt.figure(figsize=(16, 8))
-        plt.plot(np.arange(len(self.x)), self.x, label="Time series")
-        plt.scatter(CP, self.x[CP], label=f"{num_changepoints} Change Points", c="r")
-        plt.title("Change Point Detection")
+        plt.plot(np.arange(len(self.x)), self.x)
+
+        plt.scatter(CP[1:-1], segments[CP[1:-1]], label=f"{num_changepoints} Change Points", c="r")
+        if how=="linear":
+            plt.plot(np.arange(len(self.x)), segments, c="red")
+        else:
+            plt.step(np.arange(len(self.x)), segments, where="post", c="red")
+        plt.title("Change Point Detection with Segment Means")
         plt.legend()
         plt.show()
