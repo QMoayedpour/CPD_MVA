@@ -131,6 +131,9 @@ class CPOP(object):
         return (x[0], remove)
 
     def get_int_t(self, coefs, taus_t):
+        """
+        Return the set of taus st int_t^tau is not empty
+        """
         phi_curr = -np.inf
         key_curr = self.get_min_inf(coefs)
         taus_t = [str(tau) for tau in taus_t]
@@ -182,12 +185,14 @@ class CPOP(object):
         for tau in T_t_star:
             if tau not in T_t_prune: # Ici T_t_prune renvoie les partitions qui ne vérifient pas
                                      # L'autre cond de pruning
-                                     # Peut etre #TODO modifier comment on fait l'intersection des 2 sets
+                                     # Peut etre #TODO modifier comment on fait l'intersection des 2 sets ?
                 taus_t_.append(tau + [t])
 
         return taus_t_
 
     def get_val(self, coefs_dict):
+        """Compute the cost of the function
+        """
         output_dict = {}
 
         for key, coefs in coefs_dict.items():
@@ -212,6 +217,16 @@ class CPOP(object):
         return taus_out
 
     def run(self):
+        """
+        Compute the CPOP algorithm and return the optimal taus.
+        We used dictionnary to store the coefficients, where the keys of the dictionnary is simply
+        the list of the tau as strings. We can easily go from a string to a list
+        Each time we call a key from a dictionnary it take O(1)
+        However, storing in a dictionnary is not efficient when we calculate the minimum over a set of taus
+        but in practice, the taus stored are not really big.
+        """
+
+        self._reset_coefs() # On vide nos dictionnaires
 
         self.K = 2 * self.beta + self.h(1) + self.h(self.n)
 
@@ -237,6 +252,9 @@ class CPOP(object):
         return self.ckpts
 
     def get_phis(self, ckpts):
+        """
+        Before calling this function, make sure ckpts[0] = 0 and ckpts[-1] = t-1
+        """
         coef, rec_1, rec_2 = self.get_coefs_at_null(ckpts[1]+1)
 
         list_rec_1s = [rec_1]
