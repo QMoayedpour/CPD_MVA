@@ -342,7 +342,7 @@ class CPOP(object):
 
     def mBIC(self):
         scnd_term = sum(math.log((self.ckpts[i] - self.ckpts[i-1]) / self.n) for i in range(1, len(self.ckpts)))
-        return -2*self._loglikelihood() + 3 * len(self.phis) * np.log(self.n) + scnd_term
+        return -2*self._loglikelihood() + 6 * len(self.phis) * np.log(self.n) + scnd_term
 
     def AIC(self):
         return -2*self._loglikelihood() + 2*len(self.phis)
